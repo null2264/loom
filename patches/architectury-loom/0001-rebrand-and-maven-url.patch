@@ -1,0 +1,65 @@
+diff --git a/build.gradle b/build.gradle
+index 570cb354..451a1c85 100644
+--- a/build.gradle
++++ b/build.gradle
+@@ -22,7 +22,7 @@ tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).all {
+ 	}
+ }
+ 
+-group = "dev.architectury"
++group = "io.github.null2264"
+ def baseVersion = '1.10'
+ 
+ def ENV = System.getenv()
+@@ -264,7 +264,7 @@ codenarc {
+ gradlePlugin {
+ 	plugins {
+ 		fabricLoom {
+-			id = 'dev.architectury.loom'
++			id = 'io.github.null2264.architectury-loom'
+ 			implementationClass = 'net.fabricmc.loom.LoomGradlePlugin'
+ 		}
+ 	}
+@@ -324,8 +324,8 @@ publishing {
+ 
+ 			// Manually crate the plugin marker for snapshot versions
+ 			snapshotPlugin(MavenPublication) {
+-				groupId = 'dev.architectury.loom'
+-				artifactId = 'dev.architectury.loom.gradle.plugin'
++				groupId = 'io.github.null2264.architectury-loom'
++				artifactId = 'io.github.null2264.architectury-loom.gradle.plugin'
+ 				version = baseVersion + '-SNAPSHOT'
+ 
+ 				pom.withXml({
+@@ -346,11 +346,11 @@ publishing {
+ 	}
+ 
+ 	repositories {
+-		if (ENV.MAVEN_PASS != null) {
++		if (ENV.MAVEN_URL != null) {
+ 			maven {
+-				url = "https://deploy.shedaniel.me/"
++				url(ENV.MAVEN_URL)
+ 				credentials {
+-					username = "shedaniel"
++					username = ENV.MAVEN_USER
+ 					password = ENV.MAVEN_PASS
+ 				}
+ 			}
+diff --git a/settings.gradle b/settings.gradle
+index 6b14589d..f4a60a4f 100644
+--- a/settings.gradle
++++ b/settings.gradle
+@@ -1,4 +1,4 @@
+-rootProject.name = name
++rootProject.name = "architectury-loom"
+ 
+ dependencyResolutionManagement {
+ 	versionCatalogs {
+@@ -9,4 +9,4 @@ dependencyResolutionManagement {
+ 			from(files("gradle/runtime.libs.versions.toml"))
+ 		}
+ 	}
+-}
+\ No newline at end of file
++}

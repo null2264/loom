@@ -3,5 +3,4 @@
 /.gradle
 build
 .DS_Store
-/null-*-loom
-/upstreams/**/**
+/*-loom

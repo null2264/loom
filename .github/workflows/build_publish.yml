@@ -1,0 +1,39 @@
+name: Build and Publish
+
+on:
+  push:
+    branches:
+      - dev/**
+    paths-ignore:
+      - "**.md"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@v4
+
+      - name: Setup Gradle
+        uses: null2264/actions/gradle-setup@a4d662095a2f2af1ed24f1228eb6e55b0f9f1f29
+        with:
+          java: 17
+          distro: adopt
+
+      - name: Apply patches
+        run: |
+          git submodule update --init && ./gradlew applyPatches
+
+      - name: Build
+        run: |
+          ./gradlew build
+
+      - name: Publish
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          ./gradlew publish
