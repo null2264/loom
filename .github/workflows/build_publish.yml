@@ -14,6 +14,12 @@ concurrency:
 
 jobs:
   build:
+    strategy:
+      fail-fast: false
+      matrix:
+        buildDir: 
+          - "fabric-loom"
+          - "architectury-loom"
     runs-on: ubuntu-latest
     steps:
       - name: Clone repo
@@ -27,15 +33,19 @@ jobs:
 
       - name: Apply patches
         run: |
-          git submodule update --init && ./gradlew applyPatches
+          git submodule update --init
+          cd upstreams/${{ matrix.buildDir }}
+          find ../../patches/${{ matrix.buildDir }} -name '*.patch' -print0 | sort -z | xargs -0 -n 1 patch -i
 
       - name: Build
         run: |
+          cd upstreams/${{ matrix.buildDir }}
           ./gradlew build
 
       - name: Publish
         if: github.event_name == 'workflow_dispatch'
         run: |
+          cd upstreams/${{ matrix.buildDir }}
           ./gradlew publish
         env:
           MAVEN_URL: 'https://maven.aap.my.id/'
