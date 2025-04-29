@@ -147,3 +147,29 @@ index 6b14589d..f4a60a4f 100644
 -}
 \ No newline at end of file
 +}
+diff --git a/src/main/java/net/fabricmc/loom/LoomGradlePlugin.java b/src/main/java/net/fabricmc/loom/LoomGradlePlugin.java
+index 8c82aadf..171dafcb 100644
+--- a/src/main/java/net/fabricmc/loom/LoomGradlePlugin.java
++++ b/src/main/java/net/fabricmc/loom/LoomGradlePlugin.java
+@@ -86,7 +86,7 @@ public class LoomGradlePlugin implements Plugin<PluginAware> {
+ 		if (!loggedVersions.contains(LOOM_VERSION)) {
+ 			loggedVersions.add(LOOM_VERSION);
+ 			System.setProperty("loom.printed.logged", String.join(",", loggedVersions));
+-			project.getLogger().lifecycle("Architectury Loom: " + LOOM_VERSION);
++			project.getLogger().lifecycle("Null's Architectury Loom: " + LOOM_VERSION);
+ 
+ 			if (Constants.PLUGIN_BETA) {
+ 				project.getLogger().lifecycle("This version of Architectury Loom is in beta! Please report any issues you encounter: https://github.com/architectury/architectury-loom/issues");
+diff --git a/src/main/java/net/fabricmc/loom/util/Constants.java b/src/main/java/net/fabricmc/loom/util/Constants.java
+index dd7628c8..70c11774 100644
+--- a/src/main/java/net/fabricmc/loom/util/Constants.java
++++ b/src/main/java/net/fabricmc/loom/util/Constants.java
+@@ -28,7 +28,7 @@ import org.jetbrains.annotations.ApiStatus;
+ import org.objectweb.asm.Opcodes;
+ 
+ public class Constants {
+-	public static final String PLUGIN_ID = "dev.architectury.loom";
++	public static final String PLUGIN_ID = "io.github.null2264.architectury-loom";
+ 	public static final boolean PLUGIN_BETA = true;
+ 	public static final boolean PLUGIN_DEPRECATED = false;
+ 	public static final String LIBRARIES_BASE = "https://libraries.minecraft.net/";
