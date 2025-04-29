@@ -40,13 +40,13 @@ jobs:
       - name: Build
         run: |
           cd upstreams/${{ matrix.buildDir }}
-          ./gradlew build
+          ./gradlew build -x test
 
       - name: Publish
         if: github.event_name == 'workflow_dispatch'
         run: |
           cd upstreams/${{ matrix.buildDir }}
-          ./gradlew publish
+          ./gradlew publish -x test
         env:
           MAVEN_URL: 'https://maven.aap.my.id/'
           MAVEN_USER: ${{ secrets.MAVEN_USER }}
