@@ -1,0 +1,794 @@
+diff --git a/build.gradle b/build.gradle
+index 570cb354..06ee1b26 100644
+--- a/build.gradle
++++ b/build.gradle
+@@ -164,6 +164,10 @@ dependencies {
+ 	// Forge mods.toml parsing
+ 	implementation libs.night.config.toml
+ 
++	//>> null
++	implementation "org.apache.maven:maven-artifact:3.6.1"
++	//<<
++
+ 	// Testing
+ 	testImplementation(gradleTestKit())
+ 	testImplementation(testLibs.spock) {
+diff --git a/src/main/java/net/fabricmc/loom/build/nesting/JarNester.java b/src/main/java/net/fabricmc/loom/build/nesting/JarNester.java
+index 845106f3..80d04e43 100644
+--- a/src/main/java/net/fabricmc/loom/build/nesting/JarNester.java
++++ b/src/main/java/net/fabricmc/loom/build/nesting/JarNester.java
+@@ -180,7 +180,7 @@ public class JarNester {
+ 			JsonObject versionObject = new JsonObject();
+ 			identifierObject.addProperty("group", metadata.group());
+ 			identifierObject.addProperty("artifact", metadata.name());
+-			versionObject.addProperty("range", "[" + metadata.version() + ",)");
++			versionObject.addProperty("range", metadata.versionRange());
+ 			versionObject.addProperty("artifactVersion", metadata.version());
+ 			jsonObject.add("identifier", identifierObject);
+ 			jsonObject.add("version", versionObject);
+diff --git a/src/main/java/net/fabricmc/loom/build/nesting/NestableJarGenerationTask.java b/src/main/java/net/fabricmc/loom/build/nesting/NestableJarGenerationTask.java
+index 86a11e8d..8f79f4a4 100644
+--- a/src/main/java/net/fabricmc/loom/build/nesting/NestableJarGenerationTask.java
++++ b/src/main/java/net/fabricmc/loom/build/nesting/NestableJarGenerationTask.java
+@@ -42,10 +42,15 @@ import javax.inject.Inject;
+ import com.google.common.hash.Hashing;
+ import com.google.gson.JsonObject;
+ import org.apache.commons.io.FileUtils;
++import org.apache.maven.artifact.versioning.InvalidVersionSpecificationException;
++import org.apache.maven.artifact.versioning.VersionRange;
+ import org.gradle.api.artifacts.ArtifactView;
+ import org.gradle.api.artifacts.Configuration;
+ import org.gradle.api.artifacts.component.ComponentIdentifier;
++import org.gradle.api.artifacts.component.ComponentSelector;
+ import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
++import org.gradle.api.artifacts.component.ModuleComponentSelector;
++import org.gradle.api.artifacts.result.ResolvedDependencyResult;
+ import org.gradle.api.artifacts.result.ResolvedVariantResult;
+ import org.gradle.api.artifacts.type.ArtifactTypeDefinition;
+ import org.gradle.api.file.ConfigurableFileCollection;
+@@ -127,6 +132,32 @@ public abstract class NestableJarGenerationTask extends AbstractLoomTask {
+ 	}
+ 
+ 	public void from(Configuration configuration) {
++		Map<String, String> versionRangeMap = new HashMap<>();
++		configuration.getIncoming().getResolutionResult().getRootComponent().get().getDependencies().forEach(result -> {
++			if (!(result instanceof ResolvedDependencyResult)) return;
++			ResolvedDependencyResult resolvedResult = (ResolvedDependencyResult) result;
++			ComponentSelector requested = resolvedResult.getRequested();
++			ResolvedVariantResult variant = resolvedResult.getResolvedVariant();
++			ComponentIdentifier id = variant.getOwner();
++
++			String versionRange = null;
++			if (requested instanceof ModuleComponentSelector) {
++				ModuleComponentSelector requestedModule = (ModuleComponentSelector) requested;
++				if (isValidVersionRange(requestedModule.getVersionConstraint().getStrictVersion())) {
++					versionRange = requestedModule.getVersionConstraint().getStrictVersion();
++				} else if (isValidVersionRange(requestedModule.getVersionConstraint().getRequiredVersion())) {
++					versionRange = requestedModule.getVersionConstraint().getRequiredVersion();
++				} else if (isValidVersionRange(requestedModule.getVersionConstraint().getPreferredVersion())) {
++					versionRange = requestedModule.getVersionConstraint().getPreferredVersion();
++				} if (isValidVersionRange(requestedModule.getVersion())) {
++					versionRange = requestedModule.getVersion();
++				}
++			}
++
++			if (versionRange == null) return;
++
++			versionRangeMap.put(id.toString(), versionRange);
++		});
+ 		ArtifactView artifacts = configuration.getIncoming().artifactView(config -> {
+ 			config.attributes(
+ 					attr -> attr.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, ArtifactTypeDefinition.JAR_TYPE)
+@@ -147,12 +178,25 @@ public abstract class NestableJarGenerationTask extends AbstractLoomTask {
+ 							moduleIdentifier.getGroup(),
+ 							moduleIdentifier.getModule(),
+ 							moduleIdentifier.getVersion(),
+-							null
++							null,
++							versionRangeMap.getOrDefault(
++									id.toString(),
++									makeOpenVersionRange(moduleIdentifier.getVersion())
++							)
+ 					);
+ 				}
+ 
+ 				List<Metadata> capabilityLocations = variant.getCapabilities().stream()
+-						.map(capability -> new Metadata(capability.getGroup(), capability.getName(), capability.getVersion(), null))
++						.map(capability -> new Metadata(
++								capability.getGroup(),
++								capability.getName(),
++								capability.getVersion(),
++								null,
++								versionRangeMap.getOrDefault(
++										id.toString(),
++										makeOpenVersionRange(capability.getVersion())
++								)
++						))
+ 						.toList();
+ 
+ 				if (!capabilityLocations.isEmpty() && (moduleLocation == null || !capabilityLocations.contains(moduleLocation))) {
+@@ -169,6 +213,9 @@ public abstract class NestableJarGenerationTask extends AbstractLoomTask {
+ 				String name = moduleLocation.name;
+ 				String version = moduleLocation.version;
+ 				String classifier = null;
++				//>> null
++				String versionRange = moduleLocation.versionRange;
++				//<<
+ 
+ 				if (artifact.getFile().getName().startsWith(name + "-" + version + "-")) {
+ 					String rest = artifact.getFile().getName().substring(name.length() + version.length() + 2);
+@@ -179,13 +226,31 @@ public abstract class NestableJarGenerationTask extends AbstractLoomTask {
+ 					}
+ 				}
+ 
+-				Metadata metadata = new Metadata(group, name, version, classifier);
++				Metadata metadata = new Metadata(group, name, version, classifier, versionRange);
+ 				map.put(artifact.getFile().getName(), metadata);
+ 			});
+ 			return map;
+ 		}));
+ 	}
+ 
++	//>> null
++	private static String makeOpenVersionRange(String version) {
++		return "[" + version + ",)";
++	}
++
++	private static boolean isValidVersionRange(final @Nullable String range) {
++		if (range == null) {
++			return false;
++		}
++		try {
++			final VersionRange data = VersionRange.createFromVersionSpec(range);
++			return data.hasRestrictions() && data.getRecommendedVersion() == null && !range.contains("+");
++		} catch (InvalidVersionSpecificationException e) {
++			return false;
++		}
++	}
++	//<< null
++
+ 	// Generates a barebones mod for a dependency
+ 	private static String generateModForDependency(Metadata metadata) {
+ 		String modId = (metadata.group() + "_" + metadata.name() + metadata.classifier())
+@@ -267,7 +332,15 @@ public abstract class NestableJarGenerationTask extends AbstractLoomTask {
+ 		}
+ 	}
+ 
+-	public record Metadata(String group, String name, String version, @Nullable String classifier) implements Serializable {
++	public record Metadata(
++		String group,
++		String name,
++		String version,
++		@Nullable String classifier,
++		//>> null
++		@Nullable String versionRange
++		//<< null
++	) implements Serializable {
+ 		@Override
+ 		public String classifier() {
+ 			if (classifier == null) {
+diff --git a/src/test/groovy/net/fabricmc/loom/test/integration/FabricAPITest.groovy b/src/test/groovy/net/fabricmc/loom/test/integration/FabricAPITest.groovy
+index 2860e1ba..5ab39349 100644
+--- a/src/test/groovy/net/fabricmc/loom/test/integration/FabricAPITest.groovy
++++ b/src/test/groovy/net/fabricmc/loom/test/integration/FabricAPITest.groovy
+@@ -60,8 +60,8 @@ class FabricAPITest extends Specification implements GradleProjectTestTrait {
+ 
+ 		// Change the plugin used
+ 		gradle.buildGradle.text = gradle.buildGradle.text
+-				.replace('id "fabric-loom" version "1.6.11"', 'id "dev.architectury.loom"')
+-				.replace('"fabric-loom"', '"dev.architectury.loom"') + mixinApPatch
++				.replace('id "fabric-loom" version "1.6.11"', 'id "io.github.null2264.architectury-loom"')
++				.replace('"fabric-loom"', '"io.github.null2264.architectury-loom"') + mixinApPatch
+ 
+ 		def minecraftVersion = "1.21.4"
+ 		def server = ServerRunner.create(gradle.projectDir, minecraftVersion)
+diff --git a/src/test/resources/projects/accesswidener/build.gradle b/src/test/resources/projects/accesswidener/build.gradle
+index 9fcb680c..f1f32276 100644
+--- a/src/test/resources/projects/accesswidener/build.gradle
++++ b/src/test/resources/projects/accesswidener/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ 	id 'maven-publish'
+ }
+ 
+diff --git a/src/test/resources/projects/compositeBuild/build.gradle b/src/test/resources/projects/compositeBuild/build.gradle
+index 224f1291..02731081 100644
+--- a/src/test/resources/projects/compositeBuild/build.gradle
++++ b/src/test/resources/projects/compositeBuild/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ }
+ 
+ repositories {
+diff --git a/src/test/resources/projects/decompile/build.gradle b/src/test/resources/projects/decompile/build.gradle
+index 103c1137..20f73783 100644
+--- a/src/test/resources/projects/decompile/build.gradle
++++ b/src/test/resources/projects/decompile/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ }
+ 
+ dependencies {
+@@ -17,4 +17,4 @@ loom {
+ 			options.put("test", "value")
+ 		}
+ 	}
+-}
+\ No newline at end of file
++}
+diff --git a/src/test/resources/projects/dependencyResolutionManagement/basic/build.gradle b/src/test/resources/projects/dependencyResolutionManagement/basic/build.gradle
+index 6b0ae671..f3c0dfc3 100644
+--- a/src/test/resources/projects/dependencyResolutionManagement/basic/build.gradle
++++ b/src/test/resources/projects/dependencyResolutionManagement/basic/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ 	id 'maven-publish'
+ }
+ 
+diff --git a/src/test/resources/projects/dependencyResolutionManagement/projmap/build.gradle b/src/test/resources/projects/dependencyResolutionManagement/projmap/build.gradle
+index c416e23e..d342b831 100644
+--- a/src/test/resources/projects/dependencyResolutionManagement/projmap/build.gradle
++++ b/src/test/resources/projects/dependencyResolutionManagement/projmap/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ 	id 'maven-publish'
+ }
+ 
+diff --git a/src/test/resources/projects/dependencyResolutionManagement/settings.gradle b/src/test/resources/projects/dependencyResolutionManagement/settings.gradle
+index fda5e86c..1bec7046 100644
+--- a/src/test/resources/projects/dependencyResolutionManagement/settings.gradle
++++ b/src/test/resources/projects/dependencyResolutionManagement/settings.gradle
+@@ -1,11 +1,11 @@
+ pluginManagement {
+ 	plugins {
+-		id 'dev.architectury.loom'
++		id 'io.github.null2264.architectury-loom'
+ 	}
+ }
+ 
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ }
+ 
+ dependencyResolutionManagement {
+@@ -13,4 +13,4 @@ dependencyResolutionManagement {
+ }
+ 
+ include 'basic'
+-include 'projmap'
+\ No newline at end of file
++include 'projmap'
+diff --git a/src/test/resources/projects/forge/1206/build.gradle b/src/test/resources/projects/forge/1206/build.gradle
+index e398cfbf..85931700 100644
+--- a/src/test/resources/projects/forge/1206/build.gradle
++++ b/src/test/resources/projects/forge/1206/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ 	id 'maven-publish'
+ }
+ 
+@@ -100,4 +100,4 @@ processResources {
+ 
+ configurations.all {
+ 	resolutionStrategy.force("net.sf.jopt-simple:jopt-simple:5.0.4")
+-}
+\ No newline at end of file
++}
+diff --git a/src/test/resources/projects/forge/accessTransformer/build.gradle b/src/test/resources/projects/forge/accessTransformer/build.gradle
+index cecc62d2..0a8347e4 100644
+--- a/src/test/resources/projects/forge/accessTransformer/build.gradle
++++ b/src/test/resources/projects/forge/accessTransformer/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ 	id 'maven-publish'
+ }
+ 
+diff --git a/src/test/resources/projects/forge/aw2At/build.gradle b/src/test/resources/projects/forge/aw2At/build.gradle
+index 7ed9dca7..3e7def27 100644
+--- a/src/test/resources/projects/forge/aw2At/build.gradle
++++ b/src/test/resources/projects/forge/aw2At/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ 	id 'maven-publish'
+ }
+ 
+diff --git a/src/test/resources/projects/forge/externalModDependency/build.gradle b/src/test/resources/projects/forge/externalModDependency/build.gradle
+index fede83e9..fa3cf761 100644
+--- a/src/test/resources/projects/forge/externalModDependency/build.gradle
++++ b/src/test/resources/projects/forge/externalModDependency/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ 	id 'maven-publish'
+ }
+ 
+diff --git a/src/test/resources/projects/forge/legacyAw2AtMojmap/build.gradle b/src/test/resources/projects/forge/legacyAw2AtMojmap/build.gradle
+index f0326ce3..443eff14 100644
+--- a/src/test/resources/projects/forge/legacyAw2AtMojmap/build.gradle
++++ b/src/test/resources/projects/forge/legacyAw2AtMojmap/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ 	id 'maven-publish'
+ }
+ 
+diff --git a/src/test/resources/projects/forge/legacyAw2AtYarn/build.gradle b/src/test/resources/projects/forge/legacyAw2AtYarn/build.gradle
+index 967f2590..5c2039d2 100644
+--- a/src/test/resources/projects/forge/legacyAw2AtYarn/build.gradle
++++ b/src/test/resources/projects/forge/legacyAw2AtYarn/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ 	id 'maven-publish'
+ }
+ 
+diff --git a/src/test/resources/projects/forge/loggerConfig/build.gradle b/src/test/resources/projects/forge/loggerConfig/build.gradle
+index d6865c5e..2aef9783 100644
+--- a/src/test/resources/projects/forge/loggerConfig/build.gradle
++++ b/src/test/resources/projects/forge/loggerConfig/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ }
+ 
+ base {
+diff --git a/src/test/resources/projects/forge/simple/build.gradle b/src/test/resources/projects/forge/simple/build.gradle
+index 844f05b6..bc828c55 100644
+--- a/src/test/resources/projects/forge/simple/build.gradle
++++ b/src/test/resources/projects/forge/simple/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ 	id 'maven-publish'
+ }
+ 
+diff --git a/src/test/resources/projects/forge/simpleMixinAp/build.gradle b/src/test/resources/projects/forge/simpleMixinAp/build.gradle
+index a8f55014..c21f09f4 100644
+--- a/src/test/resources/projects/forge/simpleMixinAp/build.gradle
++++ b/src/test/resources/projects/forge/simpleMixinAp/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ 	id 'maven-publish'
+ }
+ 
+diff --git a/src/test/resources/projects/forge/singleJar/build.gradle b/src/test/resources/projects/forge/singleJar/build.gradle
+index 99d3cd63..ee67859a 100644
+--- a/src/test/resources/projects/forge/singleJar/build.gradle
++++ b/src/test/resources/projects/forge/singleJar/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ 	id 'maven-publish'
+ }
+ 
+diff --git a/src/test/resources/projects/includedJars/build.gradle b/src/test/resources/projects/includedJars/build.gradle
+index 9e43712c..0c70b173 100644
+--- a/src/test/resources/projects/includedJars/build.gradle
++++ b/src/test/resources/projects/includedJars/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ }
+ 
+ repositories {
+@@ -11,7 +11,11 @@ dependencies {
+ 	mappings 'net.fabricmc:yarn:1.18.2+build.1:v2'
+ 	modImplementation 'net.fabricmc:fabric-loader:0.13.3'
+ 
+-	include 'org.apache.logging.log4j:log4j-core:2.22.0'
++	include('org.apache.logging.log4j:log4j-core:[2.0.0,2.22.0]') {
++		version {
++			prefer "2.22.0"
++		}
++	}
+ 
+ 	// Test bom/platform dependencies
+ 	include platform('net.kyori:adventure-bom:4.14.0')
+diff --git a/src/test/resources/projects/interfaceInjection/build.gradle b/src/test/resources/projects/interfaceInjection/build.gradle
+index 7d0a7c17..6f50dfeb 100644
+--- a/src/test/resources/projects/interfaceInjection/build.gradle
++++ b/src/test/resources/projects/interfaceInjection/build.gradle
+@@ -1,7 +1,7 @@
+ // This is used by a range of tests that append to this file before running the gradle tasks.
+ // Can be used for tests that require minimal custom setup
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ 	id 'maven-publish'
+ }
+ 
+@@ -20,4 +20,4 @@ dependencies {
+ 
+ base {
+ 	archivesName = "fabric-example-mod"
+-}
+\ No newline at end of file
++}
+diff --git a/src/test/resources/projects/java16/build.gradle b/src/test/resources/projects/java16/build.gradle
+index 707cdc68..eded88a5 100644
+--- a/src/test/resources/projects/java16/build.gradle
++++ b/src/test/resources/projects/java16/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ 	id 'maven-publish'
+ }
+ 
+diff --git a/src/test/resources/projects/kotlin/build.gradle.kts b/src/test/resources/projects/kotlin/build.gradle.kts
+index 9a5f1c2e..950b1af7 100644
+--- a/src/test/resources/projects/kotlin/build.gradle.kts
++++ b/src/test/resources/projects/kotlin/build.gradle.kts
+@@ -5,7 +5,7 @@ import org.jetbrains.kotlin.gradle.dsl.KotlinJvmOptions
+ plugins {
+ 	kotlin("jvm") version "2.0.21"
+ 	kotlin("plugin.serialization") version "2.0.21"
+-    id("dev.architectury.loom")
++    id("io.github.null2264.architectury-loom")
+ 	`maven-publish`
+ }
+ 
+diff --git a/src/test/resources/projects/legacy/build.gradle b/src/test/resources/projects/legacy/build.gradle
+index 2a8dd579..f4276e6d 100644
+--- a/src/test/resources/projects/legacy/build.gradle
++++ b/src/test/resources/projects/legacy/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ }
+ 
+ version = project.mod_version
+@@ -43,4 +43,4 @@ jar {
+ 	from("LICENSE") {
+ 		rename { "${it}_${archivesName}"}
+ 	}
+-}
+\ No newline at end of file
++}
+diff --git a/src/test/resources/projects/localFileDependency/build.gradle b/src/test/resources/projects/localFileDependency/build.gradle
+index d86f0087..c1d6c5e8 100644
+--- a/src/test/resources/projects/localFileDependency/build.gradle
++++ b/src/test/resources/projects/localFileDependency/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ 	id 'maven-publish'
+ }
+ 
+diff --git a/src/test/resources/projects/localRuntime/build.gradle b/src/test/resources/projects/localRuntime/build.gradle
+index a3f0680d..5657494e 100644
+--- a/src/test/resources/projects/localRuntime/build.gradle
++++ b/src/test/resources/projects/localRuntime/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ 	id 'maven-publish'
+ }
+ 
+diff --git a/src/test/resources/projects/maven/build.gradle b/src/test/resources/projects/maven/build.gradle
+index 7f55e634..7ddcf774 100644
+--- a/src/test/resources/projects/maven/build.gradle
++++ b/src/test/resources/projects/maven/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ 	id 'maven-publish'
+ }
+ 
+diff --git a/src/test/resources/projects/mavenLibrary/build.gradle b/src/test/resources/projects/mavenLibrary/build.gradle
+index 60a0e20a..d9c28da3 100644
+--- a/src/test/resources/projects/mavenLibrary/build.gradle
++++ b/src/test/resources/projects/mavenLibrary/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ 	id 'maven-publish'
+ }
+ 
+diff --git a/src/test/resources/projects/minimalBase/build.gradle b/src/test/resources/projects/minimalBase/build.gradle
+index dbe70455..412b7b6c 100644
+--- a/src/test/resources/projects/minimalBase/build.gradle
++++ b/src/test/resources/projects/minimalBase/build.gradle
+@@ -1,7 +1,7 @@
+ // This is used by a range of tests that append to this file before running the gradle tasks.
+ // Can be used for tests that require minimal custom setup
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ 	id 'maven-publish'
+ }
+ 
+@@ -10,4 +10,4 @@ group = "com.example"
+ 
+ base {
+ 	archivesName = "fabric-example-mod"
+-}
+\ No newline at end of file
++}
+diff --git a/src/test/resources/projects/mixinApAutoRefmap/build.gradle b/src/test/resources/projects/mixinApAutoRefmap/build.gradle
+index 06dfb69d..9916f334 100644
+--- a/src/test/resources/projects/mixinApAutoRefmap/build.gradle
++++ b/src/test/resources/projects/mixinApAutoRefmap/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ 	id 'maven-publish'
+ }
+ 
+@@ -132,4 +132,4 @@ publishing {
+ 		// The repositories here will be used for publishing your artifact, not for
+ 		// retrieving dependencies.
+ 	}
+-}
+\ No newline at end of file
++}
+diff --git a/src/test/resources/projects/mixinApSimple/build.gradle b/src/test/resources/projects/mixinApSimple/build.gradle
+index 088d761a..304cbee7 100644
+--- a/src/test/resources/projects/mixinApSimple/build.gradle
++++ b/src/test/resources/projects/mixinApSimple/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ 	id 'maven-publish'
+ }
+ 
+diff --git a/src/test/resources/projects/modJavadoc/build.gradle b/src/test/resources/projects/modJavadoc/build.gradle
+index 986377fd..8a3e26f4 100644
+--- a/src/test/resources/projects/modJavadoc/build.gradle
++++ b/src/test/resources/projects/modJavadoc/build.gradle
+@@ -1,7 +1,7 @@
+ // This is used by a range of tests that append to this file before running the gradle tasks.
+ // Can be used for tests that require minimal custom setup
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ 	id 'maven-publish'
+ }
+ 
+@@ -18,4 +18,4 @@ dependencies {
+ 
+ base {
+ 	archivesName = "fabric-example-mod"
+-}
+\ No newline at end of file
++}
+diff --git a/src/test/resources/projects/mojangMappings/build.gradle b/src/test/resources/projects/mojangMappings/build.gradle
+index 2b5a69a0..098c21dc 100644
+--- a/src/test/resources/projects/mojangMappings/build.gradle
++++ b/src/test/resources/projects/mojangMappings/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ 	id 'maven-publish'
+ }
+ 
+diff --git a/src/test/resources/projects/multi-mc-versions/settings.gradle b/src/test/resources/projects/multi-mc-versions/settings.gradle
+index 71467dc8..f3b65808 100644
+--- a/src/test/resources/projects/multi-mc-versions/settings.gradle
++++ b/src/test/resources/projects/multi-mc-versions/settings.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom' apply false
++	id 'io.github.null2264.architectury-loom' apply false
+ }
+ 
+ gradle.lifecycle.beforeProject {
+@@ -7,7 +7,7 @@ gradle.lifecycle.beforeProject {
+ 		return
+ 	}
+ 
+-	apply plugin: 'dev.architectury.loom'
++	apply plugin: 'io.github.null2264.architectury-loom'
+ 	apply plugin: 'loom-test-plugin'
+ }
+ 
+diff --git a/src/test/resources/projects/multiproject/build.gradle b/src/test/resources/projects/multiproject/build.gradle
+index 97868562..87ff68f6 100644
+--- a/src/test/resources/projects/multiproject/build.gradle
++++ b/src/test/resources/projects/multiproject/build.gradle
+@@ -1,11 +1,11 @@
+ plugins {
+ 	id "java"
+ 	id "java-library"
+-	id 'dev.architectury.loom' apply false
++	id 'io.github.null2264.architectury-loom' apply false
+ }
+ 
+ allprojects {
+-	apply plugin: "dev.architectury.loom"
++	apply plugin: "io.github.null2264.architectury-loom"
+ 
+ 	version = "1.0.0"
+ 
+@@ -66,4 +66,4 @@ dependencies {
+ base {
+ 	archivesName = "multiproject"
+ }
+-version = "1.0.0"
+\ No newline at end of file
++version = "1.0.0"
+diff --git a/src/test/resources/projects/neoforge/1206/build.gradle b/src/test/resources/projects/neoforge/1206/build.gradle
+index 5ab5071c..05cf4db2 100644
+--- a/src/test/resources/projects/neoforge/1206/build.gradle
++++ b/src/test/resources/projects/neoforge/1206/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ 	id 'maven-publish'
+ }
+ 
+diff --git a/src/test/resources/projects/neoforge/1210/build.gradle b/src/test/resources/projects/neoforge/1210/build.gradle
+index 5ab5071c..05cf4db2 100644
+--- a/src/test/resources/projects/neoforge/1210/build.gradle
++++ b/src/test/resources/projects/neoforge/1210/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ 	id 'maven-publish'
+ }
+ 
+diff --git a/src/test/resources/projects/neoforge/simple/build.gradle b/src/test/resources/projects/neoforge/simple/build.gradle
+index 03a3d7c1..39632794 100644
+--- a/src/test/resources/projects/neoforge/simple/build.gradle
++++ b/src/test/resources/projects/neoforge/simple/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ 	id 'maven-publish'
+ }
+ 
+diff --git a/src/test/resources/projects/parchment/build.gradle b/src/test/resources/projects/parchment/build.gradle
+index 9be2eddf..2570a15a 100644
+--- a/src/test/resources/projects/parchment/build.gradle
++++ b/src/test/resources/projects/parchment/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ }
+ 
+ repositories {
+diff --git a/src/test/resources/projects/reproducible/build.gradle b/src/test/resources/projects/reproducible/build.gradle
+index 98014943..68c8d223 100644
+--- a/src/test/resources/projects/reproducible/build.gradle
++++ b/src/test/resources/projects/reproducible/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ 	id 'maven-publish'
+ }
+ 
+@@ -57,4 +57,4 @@ jar {
+ remapSourcesJar {
+ 	preserveFileTimestamps = false
+ 	reproducibleFileOrder = true
+-}
+\ No newline at end of file
++}
+diff --git a/src/test/resources/projects/runconfigs/build.gradle b/src/test/resources/projects/runconfigs/build.gradle
+index 304aa890..90889f13 100644
+--- a/src/test/resources/projects/runconfigs/build.gradle
++++ b/src/test/resources/projects/runconfigs/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ }
+ 
+ loom {
+@@ -53,4 +53,4 @@ base {
+ 
+ runClient {
+ 	// Realise this task to ensure that the runConfig is lazily evaluated
+-}
+\ No newline at end of file
++}
+diff --git a/src/test/resources/projects/signed/build.gradle b/src/test/resources/projects/signed/build.gradle
+index 372a4c3d..2066d317 100644
+--- a/src/test/resources/projects/signed/build.gradle
++++ b/src/test/resources/projects/signed/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ 	id 'maven-publish'
+ 	id 'signing'
+ }
+diff --git a/src/test/resources/projects/simple/build.gradle b/src/test/resources/projects/simple/build.gradle
+index 41bb13e2..e48c6a7c 100644
+--- a/src/test/resources/projects/simple/build.gradle
++++ b/src/test/resources/projects/simple/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ 	id 'maven-publish'
+ }
+ 
+diff --git a/src/test/resources/projects/splitSources/build.gradle b/src/test/resources/projects/splitSources/build.gradle
+index 6dd9d5f7..b962e2f2 100644
+--- a/src/test/resources/projects/splitSources/build.gradle
++++ b/src/test/resources/projects/splitSources/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ 	id 'maven-publish'
+ }
+ 
+@@ -45,4 +45,4 @@ java {
+ 
+ 	sourceCompatibility = JavaVersion.VERSION_17
+ 	targetCompatibility = JavaVersion.VERSION_17
+-}
+\ No newline at end of file
++}
+diff --git a/src/test/resources/projects/transitiveAccesswidener/build.gradle b/src/test/resources/projects/transitiveAccesswidener/build.gradle
+index 986377fd..8a3e26f4 100644
+--- a/src/test/resources/projects/transitiveAccesswidener/build.gradle
++++ b/src/test/resources/projects/transitiveAccesswidener/build.gradle
+@@ -1,7 +1,7 @@
+ // This is used by a range of tests that append to this file before running the gradle tasks.
+ // Can be used for tests that require minimal custom setup
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ 	id 'maven-publish'
+ }
+ 
+@@ -18,4 +18,4 @@ dependencies {
+ 
+ base {
+ 	archivesName = "fabric-example-mod"
+-}
+\ No newline at end of file
++}
+diff --git a/src/test/resources/projects/unpick/build.gradle b/src/test/resources/projects/unpick/build.gradle
+index a0d8b223..b224bb56 100644
+--- a/src/test/resources/projects/unpick/build.gradle
++++ b/src/test/resources/projects/unpick/build.gradle
+@@ -1,5 +1,5 @@
+ plugins {
+-	id 'dev.architectury.loom'
++	id 'io.github.null2264.architectury-loom'
+ }
+ 
+ dependencies {
