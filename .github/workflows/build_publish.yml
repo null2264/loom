@@ -37,3 +37,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         run: |
           ./gradlew publish
+        env:
+          MAVEN_URL: 'https://maven.aap.my.id/'
+          MAVEN_USER: ${{ secrets.MAVEN_USER }}
+          MAVEN_PASS: ${{ secrets.MAVEN_PASS }}
