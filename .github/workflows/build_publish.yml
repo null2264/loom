@@ -17,9 +17,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        buildDir: 
-          #- "fabric-loom"
-          - "architectury-loom"
+        variant:
+          #- "fabric"
+          - "architectury"
     runs-on: ubuntu-latest
     steps:
       - name: Clone repo
@@ -34,18 +34,17 @@ jobs:
       - name: Apply patches
         run: |
           git submodule update --init
-          cd upstreams/${{ matrix.buildDir }}
-          find ../../patches/${{ matrix.buildDir }} -name '*.patch' -print0 | sort -z | xargs -0 -n 1 patch -p1 -i
+          ./apply-patches ${{ matrix.variant }}
 
       - name: Build
         run: |
-          cd upstreams/${{ matrix.buildDir }}
+          cd upstreams/${{ matrix.variant }}-loom
           ./gradlew build -x test
 
       - name: Publish
         if: github.event_name == 'workflow_dispatch'
         run: |
-          cd upstreams/${{ matrix.buildDir }}
+          cd upstreams/${{ matrix.variant }}-loom
           ./gradlew publish -x test
         env:
           MAVEN_URL: 'https://maven.aap.my.id/'

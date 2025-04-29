@@ -1,0 +1,11 @@
+#!/bin/sh
+
+variants=(
+	"fabric"
+	"architectury"
+)
+
+printf '%s\0' "${variants[@]}" | grep -Fxqz -- "$1" || { echo "Available loom variants: fabric, architectury" >&2; exit 1; }
+
+cd ./upstreams/${variants[1]}-loom && \
+find ../../patches/${variants[1]}-loom -name '*.patch' -print0 | sort -z | xargs -0 -n 1 patch -p1 -i
