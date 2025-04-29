@@ -2,9 +2,9 @@
 
 # Loom
 
-This repository contains patched version of Loom, the original projects:
-- [fabric-loom](https://github.com/FabricMC/fabric-loom)
-- [architectury-loom](https://github.com/architectury/architectury-loom)
+This repository contains patched version of Loom, the original projects:  
+[fabric-loom](https://github.com/FabricMC/fabric-loom)  
+[architectury-loom](https://github.com/architectury/architectury-loom)  
 
 ## License
 
