@@ -1,4 +1,4 @@
-name: Build and Publish
+name: Tests
 
 on:
   push:
@@ -6,10 +6,9 @@ on:
       - dev/**
     paths-ignore:
       - "**.md"
-  workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -36,17 +35,8 @@ jobs:
           git submodule update --init
           ./apply-patches ${{ matrix.variant }}
 
-      - name: Build
+      - name: Build and test
         run: |
           cd upstreams/${{ matrix.variant }}-loom
-          ./gradlew build -x test
+          ./gradlew build
 
-      - name: Publish
-        if: github.event_name == 'workflow_dispatch'
-        run: |
-          cd upstreams/${{ matrix.variant }}-loom
-          ./gradlew publish -x test
-        env:
-          MAVEN_URL: 'https://maven.aap.my.id/'
-          MAVEN_USER: ${{ secrets.MAVEN_USER }}
-          MAVEN_PASS: ${{ secrets.MAVEN_PASS }}
