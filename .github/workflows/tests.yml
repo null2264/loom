@@ -40,3 +40,8 @@ jobs:
           cd upstreams/${{ matrix.variant }}-loom
           ./gradlew build
 
+      - name: Publish test report
+        uses: mikepenz/action-junit-report@v5
+        if: success() || failure() # always run even if the previous step fails
+        with:
+          report_paths: 'upstreams/**/build/test-results/test/TEST-*.xml'
