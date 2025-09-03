@@ -19,7 +19,7 @@ index 570cb354..37988d2f 100644
  
 -group = "dev.architectury"
 +group = "io.github.null2264"
- def baseVersion = '1.10'
+ def baseVersion = '1.11'
  
  def ENV = System.getenv()
 @@ -210,61 +207,10 @@ java {
@@ -174,7 +174,7 @@ index dd7628c8..70c11774 100644
  	public static final boolean PLUGIN_DEPRECATED = false;
  	public static final String LIBRARIES_BASE = "https://libraries.minecraft.net/";
 diff --git a/src/test/groovy/net/fabricmc/loom/test/integration/FabricAPITest.groovy b/src/test/groovy/net/fabricmc/loom/test/integration/FabricAPITest.groovy
-index 2860e1ba..5ab39349 100644
+index 7ed611b1..742e2a30 100644
 --- a/src/test/groovy/net/fabricmc/loom/test/integration/FabricAPITest.groovy
 +++ b/src/test/groovy/net/fabricmc/loom/test/integration/FabricAPITest.groovy
 @@ -60,8 +60,8 @@ class FabricAPITest extends Specification implements GradleProjectTestTrait {
@@ -186,7 +186,7 @@ index 2860e1ba..5ab39349 100644
 +				.replace('id "fabric-loom" version "1.6.11"', 'id "io.github.null2264.architectury-loom"')
 +				.replace('"fabric-loom"', '"io.github.null2264.architectury-loom"') + mixinApPatch
  
- 		def minecraftVersion = "1.21.4"
+ 		def minecraftVersion = "1.21.6-pre3"
  		def server = ServerRunner.create(gradle.projectDir, minecraftVersion)
 diff --git a/src/test/resources/projects/accesswidener/build.gradle b/src/test/resources/projects/accesswidener/build.gradle
 index 9fcb680c..f1f32276 100644

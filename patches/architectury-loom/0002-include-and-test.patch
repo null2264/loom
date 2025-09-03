@@ -27,11 +27,11 @@ index 845106f3..80d04e43 100644
  			jsonObject.add("identifier", identifierObject);
  			jsonObject.add("version", versionObject);
 diff --git a/src/main/java/net/fabricmc/loom/build/nesting/NestableJarGenerationTask.java b/src/main/java/net/fabricmc/loom/build/nesting/NestableJarGenerationTask.java
-index 86a11e8d..8f79f4a4 100644
+index 35f6fd5c..56926126 100644
 --- a/src/main/java/net/fabricmc/loom/build/nesting/NestableJarGenerationTask.java
 +++ b/src/main/java/net/fabricmc/loom/build/nesting/NestableJarGenerationTask.java
-@@ -42,10 +42,15 @@ import javax.inject.Inject;
- import com.google.common.hash.Hashing;
+@@ -41,10 +41,15 @@ import javax.inject.Inject;
+ 
  import com.google.gson.JsonObject;
  import org.apache.commons.io.FileUtils;
 +import org.apache.maven.artifact.versioning.InvalidVersionSpecificationException;
@@ -46,10 +46,11 @@ index 86a11e8d..8f79f4a4 100644
  import org.gradle.api.artifacts.result.ResolvedVariantResult;
  import org.gradle.api.artifacts.type.ArtifactTypeDefinition;
  import org.gradle.api.file.ConfigurableFileCollection;
-@@ -127,6 +132,32 @@ public abstract class NestableJarGenerationTask extends AbstractLoomTask {
+@@ -127,6 +132,34 @@ public abstract class NestableJarGenerationTask extends AbstractLoomTask {
  	}
  
  	public void from(Configuration configuration) {
++		//>> null
 +		Map<String, String> versionRangeMap = new HashMap<>();
 +		configuration.getIncoming().getResolutionResult().getRootComponent().get().getDependencies().forEach(result -> {
 +			if (!(result instanceof ResolvedDependencyResult)) return;
@@ -76,10 +77,11 @@ index 86a11e8d..8f79f4a4 100644
 +
 +			versionRangeMap.put(id.toString(), versionRange);
 +		});
++		//<< null
  		ArtifactView artifacts = configuration.getIncoming().artifactView(config -> {
  			config.attributes(
  					attr -> attr.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, ArtifactTypeDefinition.JAR_TYPE)
-@@ -147,12 +178,25 @@ public abstract class NestableJarGenerationTask extends AbstractLoomTask {
+@@ -147,12 +180,25 @@ public abstract class NestableJarGenerationTask extends AbstractLoomTask {
  							moduleIdentifier.getGroup(),
  							moduleIdentifier.getModule(),
  							moduleIdentifier.getVersion(),
@@ -107,7 +109,7 @@ index 86a11e8d..8f79f4a4 100644
  						.toList();
  
  				if (!capabilityLocations.isEmpty() && (moduleLocation == null || !capabilityLocations.contains(moduleLocation))) {
-@@ -169,6 +213,9 @@ public abstract class NestableJarGenerationTask extends AbstractLoomTask {
+@@ -169,6 +215,9 @@ public abstract class NestableJarGenerationTask extends AbstractLoomTask {
  				String name = moduleLocation.name;
  				String version = moduleLocation.version;
  				String classifier = null;
@@ -117,12 +119,14 @@ index 86a11e8d..8f79f4a4 100644
  
  				if (artifact.getFile().getName().startsWith(name + "-" + version + "-")) {
  					String rest = artifact.getFile().getName().substring(name.length() + version.length() + 2);
-@@ -179,13 +226,31 @@ public abstract class NestableJarGenerationTask extends AbstractLoomTask {
+@@ -179,13 +228,33 @@ public abstract class NestableJarGenerationTask extends AbstractLoomTask {
  					}
  				}
  
 -				Metadata metadata = new Metadata(group, name, version, classifier);
++				//>> null
 +				Metadata metadata = new Metadata(group, name, version, classifier, versionRange);
++				//<< null
  				map.put(artifact.getFile().getName(), metadata);
  			});
  			return map;
@@ -150,7 +154,7 @@ index 86a11e8d..8f79f4a4 100644
  	// Generates a barebones mod for a dependency
  	private static String generateModForDependency(Metadata metadata) {
  		String modId = (metadata.group() + "_" + metadata.name() + metadata.classifier())
-@@ -267,7 +332,15 @@ public abstract class NestableJarGenerationTask extends AbstractLoomTask {
+@@ -265,7 +334,15 @@ public abstract class NestableJarGenerationTask extends AbstractLoomTask {
  		}
  	}
  
