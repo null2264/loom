@@ -39,13 +39,6 @@ index f1d18882..b0823ce9 100644
              }
          }
      }
-@@ -284,4 +286,4 @@ fun formatTestName(name: String): String {
-     } else {
-        testName
-     }
--}
-\ No newline at end of file
-+}
 diff --git a/gradle.properties b/gradle.properties
 index bcd09080..8e8e6e40 100644
 --- a/gradle.properties

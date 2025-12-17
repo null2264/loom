@@ -12,13 +12,6 @@ index f1d18882..1acdd399 100644
      implementation(libs.jbsdiff)
  
      implementation(libs.access.widener)
-@@ -284,4 +287,4 @@ fun formatTestName(name: String): String {
-     } else {
-        testName
-     }
--}
-\ No newline at end of file
-+}
 diff --git a/gradle/libs.versions.toml b/gradle/libs.versions.toml
 index d7c41e6e..14b45783 100644
 --- a/gradle/libs.versions.toml
