@@ -42,7 +42,8 @@ jobs:
 
       - name: Build and test
         run: |
-          cd upstreams/${{ matrix.variant }}-loom
+          [ "${{ matrix.variant }}" = "unimined" ] && FOLDER_NAME="${{ matrix.variant }}" || FOLDER_NAME="${{ matrix.variant }}-loom"
+          cd upstreams/$FOLDER_NAME
           ./gradlew build
 
       - name: Publish test report
