@@ -4,3 +4,6 @@
 [submodule "upstreams/fabric-loom"]
 	path = upstreams/fabric-loom
 	url = https://github.com/fabricmc/fabric-loom
+[submodule "upstreams/unimined"]
+	path = upstreams/unimined
+	url = https://github.com/unimined/Unimined

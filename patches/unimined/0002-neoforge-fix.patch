@@ -1,0 +1,76 @@
+diff --git a/build.gradle.kts b/build.gradle.kts
+index f1d18882..1acdd399 100644
+--- a/build.gradle.kts
++++ b/build.gradle.kts
+@@ -126,6 +126,9 @@ dependencies {
+     implementation(libs.binarypatcher) {
+         exclude(mapOf("group" to "commons-io"))
+     }
++    implementation(libs.neo.binarypatcher) {
++        exclude(mapOf("group" to "commons-io"))
++    }
+     implementation(libs.jbsdiff)
+ 
+     implementation(libs.access.widener)
+@@ -284,4 +287,4 @@ fun formatTestName(name: String): String {
+     } else {
+        testName
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/gradle/libs.versions.toml b/gradle/libs.versions.toml
+index d7c41e6e..14b45783 100644
+--- a/gradle/libs.versions.toml
++++ b/gradle/libs.versions.toml
+@@ -14,6 +14,7 @@ tiny-remapper = "0.11.1"
+ unimined-mapping-library = "1.2.1"
+ 
+ binarypatcher = "1.1.1"
++neo_binarypatcher = "4.0.7"
+ jbsdiff = "1.0"
+ 
+ commons-io = "2.20.0"
+@@ -45,6 +46,7 @@ tiny-remapper = { module = "net.fabricmc:tiny-remapper", version.ref = "tiny-rem
+ unimined-mapping-library-jvm = { module = "xyz.wagyourtail.unimined.mapping:unimined-mapping-library-jvm", version.ref = "unimined-mapping-library" }
+ 
+ binarypatcher = { module = "net.minecraftforge:binarypatcher", version.ref = "binarypatcher" }
++neo_binarypatcher = { module = "net.neoforged.installertools:binarypatcher", version.ref = "neo_binarypatcher" }
+ jbsdiff = { module = "io.sigpipe:jbsdiff", version.ref = "jbsdiff" }
+ 
+ access-widener = { module = "net.fabricmc:access-widener", version.ref = "access-widener" }
+diff --git a/src/minecraft/kotlin/xyz/wagyourtail/unimined/internal/minecraft/patch/forge/fg3/FG3MinecraftTransformer.kt b/src/minecraft/kotlin/xyz/wagyourtail/unimined/internal/minecraft/patch/forge/fg3/FG3MinecraftTransformer.kt
+index 996220c0..8c86ce74 100644
+--- a/src/minecraft/kotlin/xyz/wagyourtail/unimined/internal/minecraft/patch/forge/fg3/FG3MinecraftTransformer.kt
++++ b/src/minecraft/kotlin/xyz/wagyourtail/unimined/internal/minecraft/patch/forge/fg3/FG3MinecraftTransformer.kt
+@@ -531,6 +531,8 @@ open class FG3MinecraftTransformer(project: Project, val parent: ForgeLikeMinecr
+ 
+         if (!patchedMC.path.exists() || project.unimined.forceReload) {
+             patchedMC.path.deleteIfExists()
++            val additionalArgs = listOf("--data", "--unpatched")
++            val isModernNeo = (SemVerUtils.matches(provider.version, ">1.21.10") && parent.providerName.equals("NeoForged", true))
+             val args = (userdevCfg["binpatcher"].asJsonObject["args"].asJsonArray.map {
+                 when (it.asString) {
+                     "{clean}" -> inputMC.path.toString()
+@@ -538,7 +540,7 @@ open class FG3MinecraftTransformer(project: Project, val parent: ForgeLikeMinecr
+                     "{output}" -> patchedMC.path.toString()
+                     else -> it.asString
+                 }
+-            } + listOf("--data", "--unpatched")).toTypedArray()
++            } + if (isModernNeo) listOf() else additionalArgs).toTypedArray()
+             val stoutLevel = project.gradle.startParameter.logLevel
+             val stdout = System.out
+             if (stoutLevel > LogLevel.INFO) {
+@@ -546,7 +548,11 @@ open class FG3MinecraftTransformer(project: Project, val parent: ForgeLikeMinecr
+             }
+             project.logger.info("Running binpatcher with args: ${args.joinToString(" ")}")
+             try {
+-                ConsoleTool.main(args)
++                if (isModernNeo) {
++                    net.neoforged.binarypatcher.ConsoleTool.main(args)
++                } else {
++                    ConsoleTool.main(args)
++                }
+             } catch (e: Throwable) {
+                 e.printStackTrace()
+                 patchedMC.path.deleteIfExists()

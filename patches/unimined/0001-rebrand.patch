@@ -1,0 +1,60 @@
+diff --git a/build.gradle.kts b/build.gradle.kts
+index f1d18882..b0823ce9 100644
+--- a/build.gradle.kts
++++ b/build.gradle.kts
+@@ -44,6 +44,7 @@ kotlin {
+ repositories {
+     mavenLocal()
+     mavenCentral()
++    maven("https://maven.aap.my.id/")
+     maven("https://maven.wagyourtail.xyz/releases")
+     maven("https://maven.wagyourtail.xyz/snapshots")
+     maven("https://maven.neoforged.net/releases")
+@@ -225,7 +226,7 @@ dokka {
+ gradlePlugin {
+     plugins {
+         create("simplePlugin") {
+-            id = "xyz.wagyourtail.unimined"
++            id = "io.github.null2264.unimined"
+             implementationClass = "xyz.wagyourtail.unimined.UniminedPlugin"
+         }
+     }
+@@ -233,12 +234,13 @@ gradlePlugin {
+ 
+ publishing {
+     repositories {
+-        maven {
+-            name = "WagYourMaven"
+-            url = uri("https://maven.wagyourtail.xyz/" + if (project.hasProperty("version_snapshot")) "snapshots/" else "releases/")
+-            credentials {
+-                username = project.findProperty("mvn.user") as String? ?: System.getenv("USERNAME")
+-                password = project.findProperty("mvn.key") as String? ?: System.getenv("TOKEN")
++        if (System.getenv("MAVEN_URL") != null) {
++            maven {
++                url(System.getenv("MAVEN_URL"))
++                credentials {
++                    username = System.getenv("MAVEN_USER")
++                    password = System.getenv("MAVEN_PASS")
++                }
+             }
+         }
+     }
+@@ -284,4 +286,4 @@ fun formatTestName(name: String): String {
+     } else {
+        testName
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/gradle.properties b/gradle.properties
+index bcd09080..8e8e6e40 100644
+--- a/gradle.properties
++++ b/gradle.properties
+@@ -6,6 +6,6 @@ org.gradle.parallel=true
+ org.jetbrains.dokka.experimental.gradle.pluginMode=V2Enabled
+ org.jetbrains.dokka.experimental.gradle.pluginMode.noWarn=true
+ 
+-maven_group=xyz.wagyourtail.unimined
++maven_group=io.github.null2264.unimined
+ archives_base_name=unimined
+ version=1.4.2
