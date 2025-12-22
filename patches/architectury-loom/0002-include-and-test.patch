@@ -27,13 +27,13 @@ index 845106f3..80d04e43 100644
  			jsonObject.add("identifier", identifierObject);
  			jsonObject.add("version", versionObject);
 diff --git a/src/main/java/net/fabricmc/loom/build/nesting/NestableJarGenerationTask.java b/src/main/java/net/fabricmc/loom/build/nesting/NestableJarGenerationTask.java
-index 35f6fd5c..56926126 100644
+index 7b37103e..871fe872 100644
 --- a/src/main/java/net/fabricmc/loom/build/nesting/NestableJarGenerationTask.java
 +++ b/src/main/java/net/fabricmc/loom/build/nesting/NestableJarGenerationTask.java
-@@ -41,10 +41,15 @@ import javax.inject.Inject;
+@@ -41,10 +41,15 @@ import java.util.regex.Pattern;
+ import javax.inject.Inject;
  
  import com.google.gson.JsonObject;
- import org.apache.commons.io.FileUtils;
 +import org.apache.maven.artifact.versioning.InvalidVersionSpecificationException;
 +import org.apache.maven.artifact.versioning.VersionRange;
  import org.gradle.api.artifacts.ArtifactView;
