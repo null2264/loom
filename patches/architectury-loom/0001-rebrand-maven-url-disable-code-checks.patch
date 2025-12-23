@@ -147,6 +147,19 @@ index 8c82aadf..171dafcb 100644
  
  			if (Constants.PLUGIN_BETA) {
  				project.getLogger().lifecycle("This version of Architectury Loom is in beta! Please report any issues you encounter: https://github.com/architectury/architectury-loom/issues");
+diff --git a/src/main/java/net/fabricmc/loom/LoomCompanionGradlePlugin.java b/src/main/java/net/fabricmc/loom/LoomCompanionGradlePlugin.java
+index 819b9fb2..fbc68c42 100644
+--- a/src/main/java/net/fabricmc/loom/LoomCompanionGradlePlugin.java
++++ b/src/main/java/net/fabricmc/loom/LoomCompanionGradlePlugin.java
+@@ -33,7 +33,7 @@ import net.fabricmc.loom.task.launch.ExportClasspathTask;
+ import net.fabricmc.loom.util.Constants;
+ 
+ public class LoomCompanionGradlePlugin implements Plugin<Project> {
+-	public static final String NAME = "dev.architectury.loom-companion";
++	public static final String NAME = "io.github.null2264.architectury-loom-companion";
+ 	public static final String UPSTREAM_NAME = "net.fabricmc.fabric-loom-companion";
+ 
+ 	@Override
 diff --git a/src/main/java/net/fabricmc/loom/util/Constants.java b/src/main/java/net/fabricmc/loom/util/Constants.java
 index dd7628c8..70c11774 100644
 --- a/src/main/java/net/fabricmc/loom/util/Constants.java
@@ -616,6 +629,18 @@ index 5ffec8df..b99e4c7d 100644
  
  	version = "1.0.0"
  
+diff --git a/src/test/resources/projects/multiproject/javalib/build.gradle b/src/test/resources/projects/multiproject/javalib/build.gradle
+index 6219c29e..ce78845c 100644
+--- a/src/test/resources/projects/multiproject/javalib/build.gradle
++++ b/src/test/resources/projects/multiproject/javalib/build.gradle
+@@ -1,4 +1,4 @@
+ plugins {
+ 	id 'java-library'
+-	id 'dev.architectury.loom-companion'
+-}
+\ No newline at end of file
++	id 'io.github.null2264.architectury-loom-companion'
++}
 diff --git a/src/test/resources/projects/neoforge/1206/build.gradle b/src/test/resources/projects/neoforge/1206/build.gradle
 index 5ab5071c..05cf4db2 100644
 --- a/src/test/resources/projects/neoforge/1206/build.gradle
