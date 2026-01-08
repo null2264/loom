@@ -20,7 +20,6 @@ jobs:
         variant:
           #- "fabric"
           - "architectury"
-          - "unimined"
     runs-on: ubuntu-latest
     steps:
       - name: Clone repo
@@ -40,14 +39,14 @@ jobs:
 
       - name: Build
         run: |
-          [ "${{ matrix.variant }}" = "unimined" ] && FOLDER_NAME="${{ matrix.variant }}" || FOLDER_NAME="${{ matrix.variant }}-loom"
+          FOLDER_NAME="${{ matrix.variant }}-loom"
           cd upstreams/$FOLDER_NAME
           ./gradlew build -x test
 
       - name: Publish
         if: github.event_name == 'workflow_dispatch'
         run: |
-          [ "${{ matrix.variant }}" = "unimined" ] && FOLDER_NAME="${{ matrix.variant }}" || FOLDER_NAME="${{ matrix.variant }}-loom"
+          FOLDER_NAME="${{ matrix.variant }}-loom"
           cd upstreams/$FOLDER_NAME
           ./gradlew publish -x test
         env:

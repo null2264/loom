@@ -43,7 +43,7 @@ jobs:
 
       - name: Build and test
         run: |
-          [ "${{ matrix.variant }}" = "unimined" ] && FOLDER_NAME="${{ matrix.variant }}" || FOLDER_NAME="${{ matrix.variant }}-loom"
+          FOLDER_NAME="${{ matrix.variant }}-loom"
           cd upstreams/$FOLDER_NAME
           ./gradlew build
 
