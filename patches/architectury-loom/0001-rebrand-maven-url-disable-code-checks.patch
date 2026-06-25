@@ -802,3 +802,16 @@ index a0d8b223..b224bb56 100644
  }
  
  dependencies {
+diff --git a/src/main/java/net/fabricmc/loom/LoomNoRemapGradlePlugin.java b/src/main/java/net/fabricmc/loom/LoomNoRemapGradlePlugin.java
+index c0b2a022..caaf672c 100644
+--- a/src/main/java/net/fabricmc/loom/LoomNoRemapGradlePlugin.java
++++ b/src/main/java/net/fabricmc/loom/LoomNoRemapGradlePlugin.java
+@@ -31,7 +31,7 @@ import org.gradle.api.Project;
+  * A marker plugin to indicate to the main loom plugin not to setup for remapping.
+  */
+ public class LoomNoRemapGradlePlugin implements Plugin<Project> {
+-	public static final String NAME = "dev.architectury.loom-no-remap";
++	public static final String NAME = "io.github.null2264.architectury-loom-no-remap";
+ 
+ 	@Override
+ 	public void apply(Project target) {
