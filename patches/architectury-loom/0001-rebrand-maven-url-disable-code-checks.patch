@@ -1,5 +1,5 @@
 diff --git a/build.gradle b/build.gradle
-index 570cb354..37988d2f 100644
+index 8c3f27f0..5cb4d0d4 100644
 --- a/build.gradle
 +++ b/build.gradle
 @@ -5,10 +5,7 @@ plugins {
@@ -19,10 +19,21 @@ index 570cb354..37988d2f 100644
  
 -group = "dev.architectury"
 +group = "io.github.null2264"
- def baseVersion = '1.14'
+ def baseVersion = '1.17'
  
  def ENV = System.getenv()
-@@ -224,66 +224,22 @@ java {
+@@ -165,6 +162,10 @@ dependencies {
+ 	// quilt.mod.json5 parsing
+ 	implementation libs.jankson
+ 
++	//>> null
++	implementation "org.apache.maven:maven-artifact:3.6.1"
++	//<<
++
+ 	// Testing
+ 	testImplementation(gradleTestKit())
+ 	testImplementation(testLibs.spock) {
+@@ -214,74 +215,26 @@ java {
  	targetCompatibility = JavaVersion.VERSION_21
  }
  
@@ -48,7 +59,7 @@ index 570cb354..37988d2f 100644
 -		targetExclude(
 -				// These files use a @MAPPINGS@ token which is not valid Groovy
 -				'**/projects/forge/simple/build.gradle',
--				'**/projects/neoforge/simple/build.gradle'
+-				'**/projects/neoforge/1202/build.gradle'
 -				)
 -	}
 -
@@ -68,6 +79,10 @@ index 570cb354..37988d2f 100644
 -codenarc {
 -	toolVersion = libs.versions.codenarc.get()
 -	configFile = file("codenarc.groovy")
+-
+-	if (ENV.CI) {
+-		reportFormat = 'xml'
+-	}
 -}
 -
  gradlePlugin {
@@ -92,8 +107,13 @@ index 570cb354..37988d2f 100644
 +			id = 'io.github.null2264.architectury-loom-companion'
  			implementationClass = 'net.fabricmc.loom.LoomCompanionGradlePlugin'
  		}
+ 		fabricLoomRepositories {
+-			id = 'dev.architectury.loom-repositories'
++			id = 'io.github.null2264.architectury-loom-repositories'
+ 			implementationClass = 'net.fabricmc.loom.LoomRepositoryPlugin'
+ 		}
  	}
-@@ -346,11 +292,11 @@ publishing {
+@@ -369,11 +322,11 @@ publishing {
  	}
  
  	repositories {
@@ -261,20 +281,20 @@ index c416e23e..d342b831 100644
  }
  
 diff --git a/src/test/resources/projects/dependencyResolutionManagement/settings.gradle b/src/test/resources/projects/dependencyResolutionManagement/settings.gradle
-index fda5e86c..1bec7046 100644
+index 874f341c..0e90ce98 100644
 --- a/src/test/resources/projects/dependencyResolutionManagement/settings.gradle
 +++ b/src/test/resources/projects/dependencyResolutionManagement/settings.gradle
 @@ -1,11 +1,11 @@
  pluginManagement {
  	plugins {
--		id 'dev.architectury.loom'
-+		id 'io.github.null2264.architectury-loom'
+-		id 'dev.architectury.loom-repositories'
++		id 'io.github.null2264.architectury-loom-repositories'
  	}
  }
  
  plugins {
--	id 'dev.architectury.loom'
-+	id 'io.github.null2264.architectury-loom'
+-	id 'dev.architectury.loom-repositories'
++	id 'io.github.null2264.architectury-loom-repositories'
  }
  
  dependencyResolutionManagement {
@@ -673,10 +693,10 @@ index 5ab5071c..05cf4db2 100644
  	id 'maven-publish'
  }
  
-diff --git a/src/test/resources/projects/neoforge/simple/build.gradle b/src/test/resources/projects/neoforge/simple/build.gradle
-index 03a3d7c1..39632794 100644
---- a/src/test/resources/projects/neoforge/simple/build.gradle
-+++ b/src/test/resources/projects/neoforge/simple/build.gradle
+diff --git a/src/test/resources/projects/neoforge/1202/build.gradle b/src/test/resources/projects/neoforge/1202/build.gradle
+index 4352aab8..d5a757ed 100644
+--- a/src/test/resources/projects/neoforge/1202/build.gradle
++++ b/src/test/resources/projects/neoforge/1202/build.gradle
 @@ -1,5 +1,5 @@
  plugins {
 -	id 'dev.architectury.loom'
