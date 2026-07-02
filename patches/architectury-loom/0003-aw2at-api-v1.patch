@@ -1,0 +1,489 @@
+diff --git a/src/main/java/dev/architectury/loom/accesstransformer/Aw2At.java b/src/main/java/dev/architectury/loom/accesstransformer/Aw2At.java
+index b0aa81c771..924cba13a5 100644
+--- a/src/main/java/dev/architectury/loom/accesstransformer/Aw2At.java
++++ b/src/main/java/dev/architectury/loom/accesstransformer/Aw2At.java
+@@ -28,6 +28,8 @@
+ import java.io.File;
+ import java.io.IOException;
+ import java.nio.file.Path;
++import java.util.HashSet;
++import java.util.Set;
+ 
+ import dev.architectury.at.AccessChange;
+ import dev.architectury.at.AccessTransform;
+@@ -35,6 +37,7 @@
+ import dev.architectury.at.ModifierChange;
+ import org.cadixdev.bombe.type.signature.MethodSignature;
+ import org.gradle.api.Project;
++import org.gradle.api.provider.Provider;
+ import org.gradle.api.tasks.SourceSet;
+ import org.gradle.api.tasks.SourceSetContainer;
+ import org.jetbrains.annotations.VisibleForTesting;
+@@ -43,41 +46,47 @@
+ import net.fabricmc.classtweaker.api.visitor.AccessWidenerVisitor;
+ import net.fabricmc.classtweaker.api.visitor.ClassTweakerVisitor;
+ import net.fabricmc.loom.LoomGradleExtension;
+-import net.fabricmc.loom.task.RemapJarTask;
+ 
+ /**
+  * Converts AW files to AT files.
+  */
+ public final class Aw2At {
+-	public static void setup(Project project, RemapJarTask remapJar) {
++	/**
++	 * Gets all to-be-converted access wideners configured in the Loom extension on Forge.
++	 */
++	public static Provider<Set<String>> getForgeAtAccessWideners(Project project) {
+ 		LoomGradleExtension extension = LoomGradleExtension.get(project);
+ 
+-		if (extension.getAccessWidenerPath().isPresent()) {
+-			// Find the relative AW file name
+-			String awName = null;
+-			Path awPath = extension.getAccessWidenerPath().get().getAsFile().toPath();
+-			SourceSetContainer sourceSets = project.getExtensions().getByType(SourceSetContainer.class);
+-			SourceSet main = sourceSets.getByName(SourceSet.MAIN_SOURCE_SET_NAME);
+-			boolean found = false;
+-
+-			for (File srcDir : main.getResources().getSrcDirs()) {
+-				Path srcDirPath = srcDir.toPath().toAbsolutePath();
+-
+-				if (awPath.startsWith(srcDirPath)) {
+-					awName = srcDirPath.relativize(awPath).toString().replace(File.separator, "/");
+-					found = true;
+-					break;
++		return extension.getForge().getExtraAccessWideners().map(extra -> {
++			Set<String> all = new HashSet<>(extra);
++
++			if (extension.getAccessWidenerPath().isPresent()) {
++				// Find the relative AW file name
++				String awName = null;
++				Path awPath = extension.getAccessWidenerPath().get().getAsFile().toPath();
++				SourceSetContainer sourceSets = project.getExtensions().getByType(SourceSetContainer.class);
++				SourceSet main = sourceSets.getByName(SourceSet.MAIN_SOURCE_SET_NAME);
++				boolean found = false;
++
++				for (File srcDir : main.getResources().getSrcDirs()) {
++					Path srcDirPath = srcDir.toPath().toAbsolutePath();
++
++					if (awPath.startsWith(srcDirPath)) {
++						awName = srcDirPath.relativize(awPath).toString().replace(File.separator, "/");
++						found = true;
++						break;
++					}
+ 				}
+-			}
+ 
+-			if (!found) {
+-				awName = awPath.getFileName().toString();
+-			}
++				if (!found) {
++					awName = awPath.getFileName().toString();
++				}
+ 
+-			remapJar.getAtAccessWideners().add(awName);
+-		}
++				all.add(awName);
++			}
+ 
+-		remapJar.getAtAccessWideners().addAll(extension.getForge().getExtraAccessWideners());
++			return all;
++		});
+ 	}
+ 
+ 	/**
+diff --git a/src/main/java/dev/architectury/loom/accesstransformer/Aw2AtAction.java b/src/main/java/dev/architectury/loom/accesstransformer/Aw2AtAction.java
+new file mode 100644
+index 0000000000..c12329582b
+--- /dev/null
++++ b/src/main/java/dev/architectury/loom/accesstransformer/Aw2AtAction.java
+@@ -0,0 +1,57 @@
++package dev.architectury.loom.accesstransformer;
++
++import java.io.IOException;
++import java.io.UncheckedIOException;
++import java.nio.file.Path;
++import java.util.Set;
++
++import dev.architectury.loom.extensions.ModBuildExtensions;
++import org.gradle.api.Action;
++import org.gradle.api.Task;
++import org.gradle.api.provider.Property;
++import org.gradle.api.provider.Provider;
++import org.gradle.api.provider.SetProperty;
++import org.gradle.api.tasks.Input;
++import org.gradle.api.tasks.Nested;
++import org.gradle.api.tasks.Optional;
++import org.gradle.jvm.tasks.Jar;
++
++import net.fabricmc.loom.task.RemapJarTask;
++import net.fabricmc.loom.task.service.MappingsService;
++import net.fabricmc.loom.util.service.ScopedServiceFactory;
++
++public abstract class Aw2AtAction implements Action<Task> {
++	@Input
++	public abstract SetProperty<String> getAccessWidenerPaths();
++
++	// This property is left empty here on purpose.
++	// This is a form of future-proofing this action class if it needs to be used with RemapJarTask.
++	// Note that we currently want RJT to process this separately as the reproducibility rewrites
++	// need to come after this action.
++	@Nested
++	@Optional
++	public abstract Property<MappingsService.Options> getMappingOptions();
++
++	public static void addToTask(Jar task, Provider<Set<String>> awPaths) {
++		if (task instanceof RemapJarTask) {
++			throw new IllegalArgumentException("Jar task must not be a RemapJarTask");
++		}
++
++		final Aw2AtAction action = task.getProject().getObjects().newInstance(Aw2AtAction.class);
++		action.getAccessWidenerPaths().set(awPaths);
++		// RemapJarTask already sets up the inputs on its own
++		task.getInputs().property("atAccessWideners", awPaths);
++		task.doLast(action);
++	}
++
++	@Override
++	public void execute(Task task) {
++		try (var serviceFactory = new ScopedServiceFactory()) {
++			final Jar jarTask = (Jar) task;
++			final Path jarPath = jarTask.getArchiveFile().get().getAsFile().toPath();
++			ModBuildExtensions.convertAwToAt(serviceFactory, getAccessWidenerPaths().get(), jarPath, getMappingOptions());
++		} catch (IOException e) {
++			throw new UncheckedIOException(e);
++		}
++	}
++}
+diff --git a/src/main/java/dev/architectury/loom/extensions/ModBuildExtensions.java b/src/main/java/dev/architectury/loom/extensions/ModBuildExtensions.java
+index 9dd857b002..f2336d645e 100644
+--- a/src/main/java/dev/architectury/loom/extensions/ModBuildExtensions.java
++++ b/src/main/java/dev/architectury/loom/extensions/ModBuildExtensions.java
+@@ -11,6 +11,7 @@
+ import java.nio.file.Files;
+ import java.nio.file.NoSuchFileException;
+ import java.nio.file.Path;
++import java.util.Map;
+ import java.util.Set;
+ import java.util.jar.Attributes;
+ import java.util.jar.JarFile;
+@@ -20,9 +21,14 @@
+ import dev.architectury.at.io.AccessTransformFormats;
+ import dev.architectury.loom.accesstransformer.Aw2At;
+ import dev.architectury.loom.util.LfWriter;
++import dev.architectury.loom.util.PropertyUtil;
++import org.gradle.api.Project;
++import org.gradle.api.plugins.JavaPlugin;
+ import org.gradle.api.provider.Provider;
++import org.gradle.jvm.tasks.Jar;
+ import org.jspecify.annotations.Nullable;
+ 
++import net.fabricmc.loom.LoomGradleExtension;
+ import net.fabricmc.loom.task.service.MappingsService;
+ import net.fabricmc.loom.util.Constants;
+ import net.fabricmc.loom.util.FileSystemUtil;
+@@ -48,7 +54,20 @@ public static Set<String> readMixinConfigsFromManifest(File jarFile) {
+ 		}
+ 	}
+ 
+-	public static void convertAwToAt(ServiceFactory serviceFactory, Set<String> atAccessWideners, Path outputFile, Provider<MappingsService.Options> options) throws IOException {
++	public static void addMixinConfigsToDefaultJarManifest(Project project) {
++		final LoomGradleExtension extension = LoomGradleExtension.get(project);
++		final Set<String> mixinConfigs = PropertyUtil.getAndFinalize(extension.getForge().getMixinConfigs());
++
++		if (!mixinConfigs.isEmpty()) {
++			project.getTasks().named(JavaPlugin.JAR_TASK_NAME, Jar.class, task -> {
++				task.manifest(manifest -> {
++					manifest.attributes(Map.of(Constants.Forge.MIXIN_CONFIGS_MANIFEST_KEY, String.join(",", mixinConfigs)));
++				});
++			});
++		}
++	}
++
++	public static void convertAwToAt(ServiceFactory serviceFactory, Set<String> atAccessWideners, Path outputFile, Provider<MappingsService.Options> mappingOptions) throws IOException {
+ 		if (atAccessWideners.isEmpty()) {
+ 			return;
+ 		}
+@@ -63,6 +82,7 @@ public static void convertAwToAt(ServiceFactory serviceFactory, Set<String> atAc
+ 				throw new FileAlreadyExistsException("Jar " + outputFile + " already contains an access transformer - cannot convert AWs!");
+ 			}
+ 
++			// Read all AWs into the AT set
+ 			for (String aw : atAccessWideners) {
+ 				Path awPath = fs.getPath(aw);
+ 
+@@ -77,9 +97,13 @@ public static void convertAwToAt(ServiceFactory serviceFactory, Set<String> atAc
+ 				Files.delete(awPath);
+ 			}
+ 
+-			MappingsService service = serviceFactory.get(options);
+-			at = at.remap(service.getMemoryMappingTree(), service.getFrom(), service.getTo());
++			// Remap the AT if mappings are provided
++			if (mappingOptions.isPresent()) {
++				MappingsService service = serviceFactory.get(mappingOptions);
++				at = at.remap(service.getMemoryMappingTree(), service.getFrom(), service.getTo());
++			}
+ 
++			// Write out the merged and possibly remapped AT
+ 			try (Writer writer = new LfWriter(Files.newBufferedWriter(atPath))) {
+ 				AccessTransformFormats.FML.write(writer, at);
+ 			}
+diff --git a/src/main/java/net/fabricmc/loom/api/NeoForgeExtensionAPI.java b/src/main/java/net/fabricmc/loom/api/NeoForgeExtensionAPI.java
+index 9d5474b3df..03ebe40f9a 100644
+--- a/src/main/java/net/fabricmc/loom/api/NeoForgeExtensionAPI.java
++++ b/src/main/java/net/fabricmc/loom/api/NeoForgeExtensionAPI.java
+@@ -1,7 +1,7 @@
+ /*
+  * This file is part of fabric-loom, licensed under the MIT License (MIT).
+  *
+- * Copyright (c) 2023 FabricMC
++ * Copyright (c) 2023-2026 FabricMC
+  *
+  * Permission is hereby granted, free of charge, to any person obtaining a copy
+  * of this software and associated documentation files (the "Software"), to deal
+@@ -25,6 +25,7 @@
+ package net.fabricmc.loom.api;
+ 
+ import org.gradle.api.file.ConfigurableFileCollection;
++import org.gradle.api.provider.SetProperty;
+ 
+ /**
+  * This is the NeoForge extension API available to build scripts.
+@@ -47,4 +48,22 @@ public interface NeoForgeExtensionAPI {
+ 	 * @param file the file, evaluated as per {@link org.gradle.api.Project#file(Object)}
+ 	 */
+ 	void accessTransformer(Object file);
++
++	/**
++	 * Gets the jar paths to the access wideners or class tweakers that will be converted to ATs for NeoForge runtime.
++	 * If you specify multiple files, they will be merged into one.
++	 *
++	 * <p>The file paths are relative to the mod jar root, corresponding to {@code resources} directories in
++	 * a development environment, <strong>not</strong> the project directory!
++	 * For example, {@code "my_mod.accesswidener"} corresponds to the source file {@code src/main/resources/my_mod.accesswidener}.
++	 *
++	 * <p>The specified files will be converted and removed from the final jar.
++	 *
++	 * <p>In projects on Minecraft versions that are obfuscated, this property is simply added to the corresponding
++	 * property in {@link net.fabricmc.loom.task.RemapJarTask}.
++	 *
++	 * @return the property containing access widener paths in the final jar
++	 * @see net.fabricmc.loom.task.RemapJarTask#getAtAccessWideners()
++	 */
++	SetProperty<String> getAtAccessWideners();
+ }
+diff --git a/src/main/java/net/fabricmc/loom/task/NonRemappedJarTaskConfiguration.java b/src/main/java/net/fabricmc/loom/task/NonRemappedJarTaskConfiguration.java
+index 0e61713ee9..746e59c2b7 100644
+--- a/src/main/java/net/fabricmc/loom/task/NonRemappedJarTaskConfiguration.java
++++ b/src/main/java/net/fabricmc/loom/task/NonRemappedJarTaskConfiguration.java
+@@ -29,6 +29,10 @@
+ import java.util.Collections;
+ import java.util.List;
+ 
++import dev.architectury.loom.accesstransformer.Aw2At;
++import dev.architectury.loom.accesstransformer.Aw2AtAction;
++import dev.architectury.loom.extensions.ModBuildExtensions;
++import dev.architectury.loom.util.PropertyUtil;
+ import org.gradle.api.Project;
+ import org.gradle.api.plugins.JavaPlugin;
+ import org.gradle.api.provider.Provider;
+@@ -76,6 +80,16 @@ public void configure() {
+ 			));
+ 
+ 			task.usesService(manifestServiceProvider);
++
++			if (extension.isForge()) {
++				if (PropertyUtil.getAndFinalize(extension.getForge().getConvertAccessWideners())) {
++					Aw2AtAction.addToTask(task, Aw2At.getForgeAtAccessWideners(project));
++				}
++
++				ModBuildExtensions.addMixinConfigsToDefaultJarManifest(project);
++			} else if (extension.isNeoForge()) {
++				Aw2AtAction.addToTask(task, extension.getNeoForge().getAtAccessWideners());
++			}
+ 		});
+ 
+ 		extension.getUnmappedModCollection().from(project.getTasks().getByName(JavaPlugin.JAR_TASK_NAME));
+diff --git a/src/main/java/net/fabricmc/loom/task/RemapTaskConfiguration.java b/src/main/java/net/fabricmc/loom/task/RemapTaskConfiguration.java
+index 6f5709c432..3b0fca6923 100644
+--- a/src/main/java/net/fabricmc/loom/task/RemapTaskConfiguration.java
++++ b/src/main/java/net/fabricmc/loom/task/RemapTaskConfiguration.java
+@@ -24,12 +24,10 @@
+ 
+ package net.fabricmc.loom.task;
+ 
+-import java.util.Map;
+-import java.util.Set;
+-
+ import javax.inject.Inject;
+ 
+ import dev.architectury.loom.accesstransformer.Aw2At;
++import dev.architectury.loom.extensions.ModBuildExtensions;
+ import dev.architectury.loom.util.PropertyUtil;
+ import org.gradle.api.Action;
+ import org.gradle.api.Project;
+@@ -117,18 +115,16 @@ public void run() {
+ 		getProject().afterEvaluate(p -> {
+ 			if (extension.isForge()) {
+ 				if (PropertyUtil.getAndFinalize(extension.getForge().getConvertAccessWideners())) {
+-					Aw2At.setup(getProject(), (RemapJarTask) getTasks().getByName(REMAP_JAR_TASK_NAME));
+-				}
+-
+-				Set<String> mixinConfigs = PropertyUtil.getAndFinalize(extension.getForge().getMixinConfigs());
+-
+-				if (!mixinConfigs.isEmpty()) {
+-					getTasks().named(JavaPlugin.JAR_TASK_NAME, Jar.class, task -> {
+-						task.manifest(manifest -> {
+-							manifest.attributes(Map.of(Constants.Forge.MIXIN_CONFIGS_MANIFEST_KEY, String.join(",", mixinConfigs)));
+-						});
++					getTasks().named(REMAP_JAR_TASK_NAME, RemapJarTask.class, task -> {
++						task.getAtAccessWideners().addAll(Aw2At.getForgeAtAccessWideners(task.getProject()));
+ 					});
+ 				}
++
++				ModBuildExtensions.addMixinConfigsToDefaultJarManifest(p);
++			} else if (extension.isNeoForge()) {
++				getTasks().named(REMAP_JAR_TASK_NAME, RemapJarTask.class, task -> {
++					task.getAtAccessWideners().addAll(extension.getNeoForge().getAtAccessWideners());
++				});
+ 			}
+ 		});
+ 
+
+From feeef0781a241f09d956d1777d7e30b5913e61de Mon Sep 17 00:00:00 2001
+From: Juuz <6596629+Juuxel@users.noreply.github.com>
+Date: Wed, 3 Jun 2026 23:24:10 +0300
+Subject: [PATCH 2/4] Let NeoForgeExtensionImpl be abstract to inject
+ properties
+
+---
+ .../net/fabricmc/loom/extension/NeoForgeExtensionImpl.java    | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/main/java/net/fabricmc/loom/extension/NeoForgeExtensionImpl.java b/src/main/java/net/fabricmc/loom/extension/NeoForgeExtensionImpl.java
+index 7795978c95..963967724c 100644
+--- a/src/main/java/net/fabricmc/loom/extension/NeoForgeExtensionImpl.java
++++ b/src/main/java/net/fabricmc/loom/extension/NeoForgeExtensionImpl.java
+@@ -1,7 +1,7 @@
+ /*
+  * This file is part of fabric-loom, licensed under the MIT License (MIT).
+  *
+- * Copyright (c) 2023 FabricMC
++ * Copyright (c) 2023-2026 FabricMC
+  *
+  * Permission is hereby granted, free of charge, to any person obtaining a copy
+  * of this software and associated documentation files (the "Software"), to deal
+@@ -31,7 +31,7 @@
+ 
+ import net.fabricmc.loom.api.NeoForgeExtensionAPI;
+ 
+-public class NeoForgeExtensionImpl implements NeoForgeExtensionAPI {
++public abstract class NeoForgeExtensionImpl implements NeoForgeExtensionAPI {
+ 	private final ConfigurableFileCollection accessTransformers;
+ 
+ 	@Inject
+
+From 844375151564a00a1101476e3a85452e33a3bcfc Mon Sep 17 00:00:00 2001
+From: Juuz <6596629+Juuxel@users.noreply.github.com>
+Date: Wed, 3 Jun 2026 23:42:31 +0300
+Subject: [PATCH 3/4] Add test for unobf NeoForge Aw2At
+
+---
+ .../loom/test/integration/neoforge/NeoForge261Test.groovy   | 2 ++
+ src/test/resources/projects/neoforge/261/build.gradle       | 6 ++++++
+ .../projects/neoforge/261/expected.accesstransformer.cfg    | 3 +++
+ .../neoforge/261/src/main/resources/test.accesswidener      | 4 ++++
+ .../neoforge/261/src/main/resources/test2.classtweaker      | 3 +++
+ 5 files changed, 18 insertions(+)
+ create mode 100644 src/test/resources/projects/neoforge/261/expected.accesstransformer.cfg
+ create mode 100644 src/test/resources/projects/neoforge/261/src/main/resources/test.accesswidener
+ create mode 100644 src/test/resources/projects/neoforge/261/src/main/resources/test2.classtweaker
+
+diff --git a/src/test/groovy/net/fabricmc/loom/test/integration/neoforge/NeoForge261Test.groovy b/src/test/groovy/net/fabricmc/loom/test/integration/neoforge/NeoForge261Test.groovy
+index 371f126b5c..b51a7bb3e5 100644
+--- a/src/test/groovy/net/fabricmc/loom/test/integration/neoforge/NeoForge261Test.groovy
++++ b/src/test/groovy/net/fabricmc/loom/test/integration/neoforge/NeoForge261Test.groovy
+@@ -44,12 +44,14 @@ class NeoForge261Test extends Specification implements GradleProjectTestTrait {
+ 		def gradle = gradleProject(project: "neoforge/261", version: DEFAULT_GRADLE)
+ 		gradle.buildGradle.text = gradle.buildGradle.text.replace('@MCVERSION@', mcVersion)
+ 				.replace('@NEOFORGEVERSION@', neoforgeVersion)
++		def expectedAt = new File(gradle.projectDir, "expected.accesstransformer.cfg").text.replace('\r', '')
+ 
+ 		when:
+ 		def result = gradle.run(task: "build")
+ 
+ 		then:
+ 		result.task(":build").outcome == SUCCESS
++		gradle.getOutputZipEntry("fabric-example-mod-1.0.0.jar", "META-INF/accesstransformer.cfg") == expectedAt
+ 
+ 		where:
+ 		mcVersion            | neoforgeVersion
+diff --git a/src/test/resources/projects/neoforge/261/build.gradle b/src/test/resources/projects/neoforge/261/build.gradle
+index 2f04977f37..e7449a3c8f 100644
+--- a/src/test/resources/projects/neoforge/261/build.gradle
++++ b/src/test/resources/projects/neoforge/261/build.gradle
+@@ -3,6 +3,12 @@ plugins {
+ 	id 'maven-publish'
+ }
+ 
++loom {
++	neoForge {
++		atAccessWideners.addAll('test.accesswidener', 'test2.classtweaker')
++	}
++}
++
+ java {
+ 	sourceCompatibility = JavaVersion.VERSION_21
+ 	targetCompatibility = JavaVersion.VERSION_21
+diff --git a/src/test/resources/projects/neoforge/261/expected.accesstransformer.cfg b/src/test/resources/projects/neoforge/261/expected.accesstransformer.cfg
+new file mode 100644
+index 0000000000..287f77851a
+--- /dev/null
++++ b/src/test/resources/projects/neoforge/261/expected.accesstransformer.cfg
+@@ -0,0 +1,3 @@
++public net.minecraft.world.level.gamerules.GameRules registerBoolean(Ljava/lang/String;Lnet/minecraft/world/level/gamerules/GameRuleCategory;Z)Lnet/minecraft/world/level/gamerules/GameRule;
++public-f net.minecraft.world.level.storage.loot.LootTable paramSet
++public-f net.minecraft.world.level.block.IronBarsBlock attachsTo(Lnet/minecraft/world/level/block/state/BlockState;Z)Z
+diff --git a/src/test/resources/projects/neoforge/261/src/main/resources/test.accesswidener b/src/test/resources/projects/neoforge/261/src/main/resources/test.accesswidener
+new file mode 100644
+index 0000000000..7a5fb18cb0
+--- /dev/null
++++ b/src/test/resources/projects/neoforge/261/src/main/resources/test.accesswidener
+@@ -0,0 +1,4 @@
++accessWidener v2 official
++
++accessible method net/minecraft/world/level/gamerules/GameRules registerBoolean (Ljava/lang/String;Lnet/minecraft/world/level/gamerules/GameRuleCategory;Z)Lnet/minecraft/world/level/gamerules/GameRule;
++extendable method net/minecraft/world/level/block/IronBarsBlock attachsTo (Lnet/minecraft/world/level/block/state/BlockState;Z)Z
+diff --git a/src/test/resources/projects/neoforge/261/src/main/resources/test2.classtweaker b/src/test/resources/projects/neoforge/261/src/main/resources/test2.classtweaker
+new file mode 100644
+index 0000000000..f83aa39962
+--- /dev/null
++++ b/src/test/resources/projects/neoforge/261/src/main/resources/test2.classtweaker
+@@ -0,0 +1,3 @@
++classTweaker v1 official
++
++mutable field net/minecraft/world/level/storage/loot/LootTable paramSet Lnet/minecraft/util/context/ContextKeySet;
+
+From 5e6bf5804ebacfc3c6cecd05da1e446bba2ea914 Mon Sep 17 00:00:00 2001
+From: Juuz <6596629+Juuxel@users.noreply.github.com>
+Date: Wed, 3 Jun 2026 23:42:54 +0300
+Subject: [PATCH 4/4] NeoForge261Test: Fix Java version check to be 25
+
+---
+ .../loom/test/integration/neoforge/NeoForge261Test.groovy     | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/test/groovy/net/fabricmc/loom/test/integration/neoforge/NeoForge261Test.groovy b/src/test/groovy/net/fabricmc/loom/test/integration/neoforge/NeoForge261Test.groovy
+index b51a7bb3e5..0a1c089bcd 100644
+--- a/src/test/groovy/net/fabricmc/loom/test/integration/neoforge/NeoForge261Test.groovy
++++ b/src/test/groovy/net/fabricmc/loom/test/integration/neoforge/NeoForge261Test.groovy
+@@ -35,8 +35,8 @@ import static org.gradle.testkit.runner.TaskOutcome.SUCCESS
+ class NeoForge261Test extends Specification implements GradleProjectTestTrait {
+ 	@Unroll
+ 	def "build #mcVersion #neoforgeVersion"() {
+-		if (Integer.valueOf(System.getProperty("java.version").split("\\.")[0]) < 21) {
+-			println("This test requires Java 21. Currently you have Java ${System.getProperty("java.version")}.")
++		if (Integer.valueOf(System.getProperty("java.version").split("\\.")[0]) < 25) {
++			println("This test requires Java 25. Currently you have Java ${System.getProperty("java.version")}.")
+ 			return
+ 		}
+ 
